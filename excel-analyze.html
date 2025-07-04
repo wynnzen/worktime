@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Excel工时分析</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.15.6/xlsx.full.min.js"></script>
+  <style>
+    /* 增加表格边框样式 */
+    #tableContainer table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+    #tableContainer th, #tableContainer td {
+      border: 1px solid #333;
+      padding: 4px 8px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h2>上传Excel进行工时分析</h2>
+  <input type="file" id="fileInput" accept=".xlsx,.xls" />
+  <button id="downloadBtn" style="display:none;">下载分析结果</button>
+  <div id="tableContainer"></div>
+  <script>
+    function parseTime(str) {
+      if (!str) return null;
+      const [h, m] = str.split(':').map(Number);
+      return h * 60 + m;
+    }
+    function formatHour(mins) {
+      return (mins / 60).toFixed(2);
+    }
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const data = evt.target.result;
+        const workbook = XLSX.read(data, {type: 'binary'});
+        const wsname = workbook.SheetNames[0];
+        const ws = workbook.Sheets[wsname];
+        const json = XLSX.utils.sheet_to_json(ws, {header:1});
+        // 添加新表头
+        json[0][5] = '工时(小时)';
+        json[0][6] = '工时不足';
+        json[0][7] = '打卡时间异常';
+        for (let i = 1; i < json.length; i++) {
+          const row = json[i];
+          const on = row[3], off = row[4];
+          if (!on || !off) continue;
+          const onMins = parseTime(on);
+          const offMins = parseTime(off);
+          if (onMins == null || offMins == null) continue;
+          // 计算工时差值，先减去0.5小时（30分钟）
+          const duration = offMins - onMins - 30;
+          row[5] = formatHour(duration);
+          // 工时不足判断
+          row[6] = duration < 480 ? '工时不足' : '正常';
+          // 打卡异常判断
+          row[7] = (onMins > 600 || offMins < 960) ? '打卡时间异常' : '正常';
+        }
+        // 展示表格
+        const html = XLSX.utils.sheet_to_html(XLSX.utils.aoa_to_sheet(json));
+        document.getElementById('tableContainer').innerHTML = html;
+        // 生成新workbook用于下载
+        const newWb = XLSX.utils.book_new();
+        const newWs = XLSX.utils.aoa_to_sheet(json);
+        XLSX.utils.book_append_sheet(newWb, newWs, '分析结果');
+        document.getElementById('downloadBtn').style.display = '';
+        document.getElementById('downloadBtn').onclick = function() {
+          XLSX.writeFile(newWb, '分析结果.xlsx');
+        };
+      };
+      reader.readAsBinaryString(file);
+    });
+  </script>
+</body>
+</html>
