@@ -48,13 +48,21 @@
         json[0][7] = '打卡时间异常';
         for (let i = 1; i < json.length; i++) {
           const row = json[i];
+          const todayStr = new Date().toISOString().slice(0, 10); // yyyy-mm-dd
+          // 跳过班次为休息或日期为今天的行
+          if (row[2] && String(row[2]).includes('休息')) continue;
+          if (row[0] && String(row[0]).slice(0,10) === todayStr) continue;
           const on = row[3], off = row[4];
-          if (!on || !off) continue;
           const onMins = parseTime(on);
           const offMins = parseTime(off);
-          if (onMins == null || offMins == null) continue;
           // 计算工时差值，先减去0.5小时（30分钟）
           const duration = offMins - onMins - 30;
+          if(duration === -30) {
+            row[5] = 0;
+            row[6] = '无打卡';
+            row[7] = '无打卡';
+            continue;
+          }
           row[5] = formatHour(duration);
           // 工时不足判断
           row[6] = duration < 480 ? '工时不足' : '正常';
