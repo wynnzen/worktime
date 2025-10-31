@@ -32,6 +32,11 @@
     function formatHour(mins) {
       return (mins / 60).toFixed(2);
     }
+    function formatTime(mins) {
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
     document.getElementById('fileInput').addEventListener('change', function(e) {
       const file = e.target.files[0];
       if (!file) return;
@@ -42,6 +47,8 @@
         const wsname = workbook.SheetNames[0];
         const ws = workbook.Sheets[wsname];
         const json = XLSX.utils.sheet_to_json(ws, {header:1});
+        // 用于追踪哪些行的下班时间是计算出来的
+        const calculatedOffRows = [];
         // 添加新表头
         json[0][5] = '工时(小时)';
         json[0][6] = '工时不足';
@@ -49,12 +56,21 @@
         for (let i = 1; i < json.length; i++) {
           const row = json[i];
           const todayStr = new Date().toISOString().slice(0, 10); // yyyy-mm-dd
-          // 跳过班次为休息或日期为今天的行
+          const isToday = row[0] && String(row[0]).slice(0,10) === todayStr;
+          // 跳过班次为休息的行
           if (row[2] && String(row[2]).includes('休息')) continue;
-          if (row[0] && String(row[0]).slice(0,10) === todayStr) continue;
+          
           const on = row[3], off = row[4];
           const onMins = parseTime(on);
-          const offMins = parseTime(off);
+          let offMins = parseTime(off);
+          
+          // 如果是今天且有上班打卡时间，计算预计下班时间
+          if (isToday && onMins !== null && offMins === null) {
+            offMins = onMins + 8.5 * 60; // 加上8.5小时
+            row[4] = formatTime(offMins);
+            calculatedOffRows.push(i); // 标记这行的下班时间是计算的
+          }
+          
           // 计算工时差值，先减去0.5小时（30分钟）
           const duration = offMins - onMins - 30;
           if(duration === -30) {
@@ -85,6 +101,10 @@
             // 打卡时间异常列
             if (row.cells[7] && row.cells[7].innerText === '打卡时间异常') {
               row.cells[7].style.color = 'red';
+            }
+            // 计算出的下班时间标记为浅绿色
+            if (calculatedOffRows.includes(i) && row.cells[4]) {
+              row.cells[4].style.color = 'lightgreen';
             }
           }
         }
